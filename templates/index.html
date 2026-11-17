@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipping Studio</title>
+<meta name="description" content="Self-hosted live and VOD clipping studio: record, detect, caption, post.">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><span class="spark">✦</span> CLIPPING STUDIO <small>local</small></div>
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="live">Live</button>
+    <button class="tab-btn" data-tab="clips">Clips</button>
+    <button class="tab-btn" data-tab="vod">VOD</button>
+    <button class="tab-btn" data-tab="earnings">Earnings</button>
+    <button class="tab-btn" data-tab="agents">AI Agents</button>
+    <button class="tab-btn" data-tab="settings">Settings</button>
+  </nav>
+  <div class="top-status">
+    <span class="pill" id="aiPill"><i class="dot"></i> AI</span>
+    <span class="pill" id="monitorPill"><i class="dot"></i> Monitor</span>
+    <span class="pill demo hidden" id="demoBadge">DEMO</span>
+    <button class="btn small ghost" id="btnPause">Pause</button>
+    <button class="btn small" id="btnDemoClip">Demo clip</button>
+  </div>
+</header>
+
+<main>
+  <!-- ------------------------------------------------------------- LIVE -->
+  <section class="tab active" id="tab-live">
+    <div class="live-grid">
+      <aside class="card">
+        <div class="card-head">
+          <h3>Streamers</h3>
+          <span class="spacer"></span>
+          <button class="btn small" id="btnAddStreamer">+ Add</button>
+        </div>
+        <div id="streamerList" class="feed"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn small" id="btnStopAll">Stop all</button>
+          <button class="btn small ghost" id="btnOpenRecordings">Recordings</button>
+        </div>
+        <p class="small faint" style="margin-top:10px">Demo mode simulates a live stream. Turn it off in Settings to use Twitch/YouTube checks.</p>
+      </aside>
+
+      <section class="card">
+        <div class="card-head">
+          <div>
+            <h3 id="liveFocusName">Waiting for a stream</h3>
+            <div class="sub" id="liveFocusSub">Demo mode starts automatically</div>
+          </div>
+          <span class="spacer"></span>
+          <span class="pill"><i class="dot"></i> <span id="liveState">idle</span></span>
+        </div>
+        <div class="metric-row">
+          <div class="metric"><b id="mRecTime">0:00</b><span>Recorded</span></div>
+          <div class="metric"><b id="mBuffer">0:00</b><span>Buffer</span></div>
+          <div class="metric"><b id="mChat">0.0</b><span>Chat / 10s</span></div>
+          <div class="metric"><b id="mSpikes">0</b><span>Spikes</span></div>
+        </div>
+        <canvas class="signal" id="signalCanvas" width="900" height="190"></canvas>
+        <div class="signal-legend">
+          <span><i style="background:var(--accent)"></i>Loudness</span>
+          <span><i style="background:var(--blue)"></i>Chat rate</span>
+          <span class="spacer"></span>
+          <span class="faint">last 90 seconds</span>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn primary" id="btnStartRec">Start recording</button>
+          <button class="btn" id="btnStopRec">Stop</button>
+          <button class="btn" id="btnCut40">Cut last 40s</button>
+          <button class="btn ghost" id="btnDetect">Run detection</button>
+        </div>
+      </section>
+
+      <aside class="card">
+        <div class="card-head"><h3>Live chat</h3><span class="spacer"></span><span class="tag" id="chatCount">0</span></div>
+        <div class="feed" id="chatFeed"></div>
+        <div class="section-title" style="margin-top:14px">Transcript</div>
+        <div class="feed" id="transcriptFeed" style="max-height:160px"></div>
+      </aside>
+    </div>
+
+    <section class="card" style="margin-top:14px">
+      <div class="card-head">
+        <h3>Spikes</h3>
+        <span class="tag" id="spikesCount">0</span>
+        <span class="spacer"></span>
+        <span class="small faint">Cut, review, or keep watching</span>
+      </div>
+      <div id="spikesList"></div>
+    </section>
+  </section>
+
+  <!-- ------------------------------------------------------------ CLIPS -->
+  <section class="tab" id="tab-clips">
+    <div class="clips-toolbar">
+      <h2 style="font-size:18px">Clip feed</h2>
+      <span class="tag" id="clipsCount">0</span>
+      <span class="spacer"></span>
+      <select id="clipFilter" style="max-width:190px">
+        <option value="all">All clips</option>
+        <option value="high">Score 70+</option>
+        <option value="unposted">Not posted</option>
+        <option value="posted">Posted</option>
+      </select>
+      <button class="btn small" id="btnRefreshClips">Refresh</button>
+      <button class="btn small ghost" id="btnSeedDemoClip">Render demo clip</button>
+      <button class="btn small ghost" id="btnOpenClips">Open folder</button>
+    </div>
+    <div class="clips-grid" id="clipsGrid"></div>
+  </section>
+
+  <!-- -------------------------------------------------------------- VOD -->
+  <section class="tab" id="tab-vod">
+    <div class="vod-grid">
+      <section class="card">
+        <div class="card-head"><h3>VOD to Shorts</h3><span class="spacer"></span><span class="tag" id="vodAiTag">AI</span></div>
+        <p class="small muted" style="margin-bottom:12px">Paste a Twitch or YouTube VOD. The studio downloads it, transcribes it, runs the two judges, then renders vertical captioned clips.</p>
+        <div class="form-grid">
+          <label class="field full">Video URL
+            <input type="url" id="vodUrl" placeholder="https://www.youtube.com/watch?v=...">
+          </label>
+          <label class="field">Streamer name
+            <input type="text" id="vodStreamer" placeholder="optional">
+          </label>
+          <label class="field">Max clips
+            <input type="number" id="vodClips" value="6" min="1" max="12">
+          </label>
+          <label class="field">Min length (s)
+            <input type="number" id="vodMin" value="15" min="5" max="120">
+          </label>
+          <label class="field">Max length (s)
+            <input type="number" id="vodMax" value="60" min="10" max="180">
+          </label>
+          <label class="field">Max video minutes (0 = no cap)
+            <input type="number" id="vodMaxMin" value="0" min="0">
+          </label>
+          <label class="check" style="align-self:end"><input type="checkbox" id="vodChat" checked> Pull chat replay</label>
+        </div>
+        <div class="row" style="margin-top:14px">
+          <button class="btn primary" id="btnVodStart">Start VOD job</button>
+          <button class="btn ghost" id="btnVodCancel">Cancel</button>
+        </div>
+        <div class="section-title" style="margin-top:18px">Or use a local file</div>
+        <div class="row">
+          <input type="text" id="vodFile" placeholder="/Users/you/Movies/vod.mp4" style="flex:1">
+          <button class="btn" id="btnVodFile">Use file</button>
+        </div>
+        <p class="small faint" id="vodNote" style="margin-top:12px"></p>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h3>Job</h3><span class="spacer"></span><span class="tag" id="vodStatus">idle</span></div>
+        <div class="bar" style="margin-bottom:8px"><i id="vodBar"></i></div>
+        <p class="small muted" id="vodMessage">No job running.</p>
+        <div class="kv" style="margin-top:10px"><span>Source</span><b id="vodSource">—</b></div>
+        <div class="kv"><span>Duration</span><b id="vodDuration">—</b></div>
+        <div class="kv"><span>Language</span><b id="vodLanguage">—</b></div>
+        <div class="kv"><span>Chat messages</span><b id="vodChatCount">—</b></div>
+        <div class="section-title" style="margin-top:16px">Clips from this job</div>
+        <div id="vodClipsList" class="feed"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- EARNINGS -->
+  <section class="tab" id="tab-earnings">
+    <div class="kpi-grid">
+      <div class="kpi"><span>Total views</span><b id="kpiViews">0</b></div>
+      <div class="kpi"><span>Revenue</span><b id="kpiRevenue">$0</b></div>
+      <div class="kpi"><span>Effective RPM</span><b id="kpiRpm">$0</b></div>
+      <div class="kpi"><span>Tracked rows</span><b id="kpiClips">0</b></div>
+    </div>
+
+    <div class="earn-grid">
+      <section class="card">
+        <div class="card-head"><h3>14-day trend</h3><span class="spacer"></span><span class="small faint">revenue</span></div>
+        <canvas class="signal" id="earnChart" width="900" height="190"></canvas>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Campaign</h3><span class="spacer"></span><span class="small faint">per 1,000 views</span></div>
+        <div class="form-grid">
+          <label class="field full">Name <input type="text" id="cfName" placeholder="Whop clipping campaign"></label>
+          <label class="field">Platform
+            <select id="cfPlatform"><option>whop</option><option>tiktok</option><option>youtube</option><option>instagram</option></select>
+          </label>
+          <label class="field">Rate ($ / per)
+            <input type="number" id="cfRate" value="1.5" step="0.01" min="0">
+          </label>
+          <label class="field">Per views
+            <select id="cfPer"><option value="1000" selected>1,000</option><option value="10000">10,000</option><option value="100000">100,000</option></select>
+          </label>
+          <label class="field">Status
+            <select id="cfStatus"><option>active</option><option>paused</option><option>done</option></select>
+          </label>
+          <label class="field full">Whop URL <input type="text" id="cfUrl" placeholder="https://whop.com/..."></label>
+          <label class="field full">Notes <textarea id="cfNotes" rows="2"></textarea></label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary" id="btnCampaignSave">Save campaign</button>
+          <button class="btn ghost" id="btnCampaignClear">Clear</button>
+          <input type="hidden" id="cfId">
+        </div>
+      </section>
+    </div>
+
+    <div class="earn-grid">
+      <section class="card">
+        <div class="card-head"><h3>Log earnings</h3><span class="spacer"></span><span class="small faint">copy from Whop / analytics</span></div>
+        <div class="form-grid">
+          <label class="field full">Campaign <select id="efCampaign"></select></label>
+          <label class="field">Date <input type="date" id="efDate"></label>
+          <label class="field">Views <input type="number" id="efViews" value="0" min="0"></label>
+          <label class="field">Likes <input type="number" id="efLikes" value="0" min="0"></label>
+          <label class="field">Revenue override ($) <input type="number" id="efRevenue" placeholder="auto" step="0.01" min="0"></label>
+          <label class="field full">Clip (optional) <select id="efClip"><option value="">— none —</option></select></label>
+          <label class="field full">Note <input type="text" id="efNote" placeholder="posted 9pm, hook test B"></label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary" id="btnEarningSave">Add row</button>
+          <label class="btn ghost small" style="cursor:pointer">Import CSV
+            <input type="file" id="csvFile" accept=".csv,text/csv" class="hidden">
+          </label>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Campaigns</h3><span class="spacer"></span><span class="tag" id="campaignCount">0</span></div>
+        <div class="table-wrap"><table class="data"><thead><tr><th>Name</th><th>Rate</th><th>Views</th><th>Revenue</th><th></th></tr></thead><tbody id="campaignsTable"></tbody></table></div>
+        <div class="section-title" style="margin-top:16px">Payout projections at your RPM</div>
+        <div id="projList" class="feed"></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div class="card-head"><h3>Earnings log</h3><span class="spacer"></span><span class="small faint">latest first</span></div>
+      <div class="table-wrap">
+        <table class="data">
+          <thead><tr><th>Date</th><th>Campaign</th><th>Views</th><th>Revenue</th><th>Note</th><th></th></tr></thead>
+          <tbody id="earningsTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </section>
+
+  <!-- ------------------------------------------------------------ AGENTS -->
+  <section class="tab" id="tab-agents">
+    <div class="row between" style="margin-bottom:12px">
+      <div>
+        <h2 style="font-size:18px">YouTube agents</h2>
+        <p class="small muted">Eleven operators. Pick one, give it a clip, get a concrete plan.</p>
+      </div>
+      <span class="tag" id="agentAiTag">AI</span>
+    </div>
+    <div class="agents-grid" id="agentsGrid"></div>
+
+    <div class="vod-grid">
+      <section class="card">
+        <div class="card-head"><h3 id="agentPanelTitle">Run an agent</h3><span class="spacer"></span><span class="tag" id="agentSelectedTag">none</span></div>
+        <div class="context-grid">
+          <label class="field">Clip
+            <select id="agClip"><option value="">— no clip —</option></select>
+          </label>
+          <label class="field">Streamer <input type="text" id="agStreamer" placeholder="mooda"></label>
+          <label class="field">Platform
+            <select id="agPlatform"><option>twitch</option><option>youtube</option><option>kick</option></select>
+          </label>
+          <label class="field">Title <input type="text" id="agTitle" placeholder="optional"></label>
+          <label class="field full">Transcript / context <textarea id="agTranscript" rows="7" placeholder="Paste a transcript or leave blank to use the clip's transcript"></textarea></label>
+          <label class="field full">Extra instructions <textarea id="agExtra" rows="3" placeholder="channel size, goal, constraints..."></textarea></label>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary" id="btnRunAgent" disabled>Pick an agent</button>
+          <span class="small faint" id="agentStatus"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head"><h3>Saved outputs</h3><span class="spacer"></span><button class="btn small ghost" id="btnOpenAgents">Open folder</button></div>
+        <div class="output-list" id="agentOutputs"></div>
+      </section>
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- SETTINGS -->
+  <section class="tab" id="tab-settings">
+    <div class="settings-grid">
+      <section class="card">
+        <div class="card-head"><h3>AI endpoint</h3><span class="spacer"></span><button class="btn small" id="btnPing">Test</button></div>
+        <div id="aiInfo"></div>
+        <p class="small faint" style="margin-top:10px">Set <span class="mono">MY_AI_ENDPOINT_URL</span> and <span class="mono">MY_AI_API_KEY</span> in <span class="mono">.env</span>, then reload. Whisper uses the same endpoint unless <span class="mono">WHISPER_BASE_URL</span> is set.</p>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Environment</h3><span class="spacer"></span><button class="btn small" id="btnReload">Reload .env</button></div>
+        <div id="envStatus"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Studio</h3><span class="spacer"></span><span class="tag" id="settingsDemo">demo</span></div>
+        <div id="monitorInfo"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn small" id="btnToggleDemo">Toggle demo mode</button>
+          <button class="btn small ghost" id="btnOpenPackages">Post packages</button>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Folders</h3></div>
+        <div id="pathsInfo"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Warnings</h3></div>
+        <div id="warningsList" class="feed"></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h3>Event log</h3></div>
+        <div class="events" id="eventsList"></div>
+      </section>
+    </div>
+  </section>
+</main>
+
+<!-- --------------------------------------------------------------- modals -->
+<div class="modal-backdrop" id="videoModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="videoTitle">Clip</h3>
+      <span class="tag" id="videoScore">—</span>
+      <button class="btn small ghost" data-close>Close</button>
+    </div>
+    <div class="modal-body">
+      <video id="videoPlayer" controls playsinline preload="metadata"></video>
+      <p class="small muted" id="videoMeta" style="margin-top:10px"></p>
+      <div class="row" style="margin-top:12px">
+        <a class="btn small" id="videoDownload" download>Download MP4</a>
+        <button class="btn small" id="btnVideoCopy">Copy caption</button>
+        <button class="btn small" id="btnVideoPackage">Prepare post package</button>
+        <button class="btn small primary" id="btnVideoPublish">Publish</button>
+      </div>
+      <div class="section-title" style="margin-top:16px">Transcript</div>
+      <p class="small muted" id="videoTranscript"></p>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="streamerModal">
+  <div class="modal narrow">
+    <div class="modal-head"><h3>Streamer</h3><span class="spacer"></span><button class="btn small ghost" data-close>Close</button></div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <label class="field full">Name <input type="text" id="sfName" placeholder="mooda"></label>
+        <label class="field">Platform
+          <select id="sfPlatform"><option value="twitch">Twitch</option><option value="youtube">YouTube</option></select>
+        </label>
+        <label class="field">Username / handle <input type="text" id="sfUsername" placeholder="mooda"></label>
+        <label class="field full">Stream URL (optional) <input type="text" id="sfUrl" placeholder="https://twitch.tv/mooda"></label>
+        <label class="field full">YouTube channel id (optional) <input type="text" id="sfChannelId" placeholder="UC..."></label>
+        <label class="field full">Notes <textarea id="sfNotes" rows="2"></textarea></label>
+        <label class="check"><input type="checkbox" id="sfEnabled" checked> Enabled</label>
+        <label class="check"><input type="checkbox" id="sfAllowed"> Creator allowed to post clips</label>
+      </div>
+      <input type="hidden" id="sfId">
+      <div class="row" style="margin-top:14px">
+        <button class="btn primary" id="btnStreamerSave">Save streamer</button>
+        <button class="btn ghost" data-close>Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="outputModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="outputTitle">Agent output</h3>
+      <span class="spacer"></span>
+      <a class="btn small ghost" id="outputDownload" download>Download .md</a>
+      <button class="btn small ghost" data-close>Close</button>
+    </div>
+    <div class="modal-body"><div class="md" id="outputBody"></div></div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

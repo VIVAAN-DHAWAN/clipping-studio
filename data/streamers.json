@@ -1,0 +1,13 @@
+[
+  {
+    "id": "demo-runner",
+    "name": "Demo Runner",
+    "platform": "twitch",
+    "username": "demo_runner",
+    "channel_id": "",
+    "url": "",
+    "enabled": true,
+    "allowed_post": false,
+    "notes": "Ships with the studio. Replace with your real streamer in Settings."
+  }
+]

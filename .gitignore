@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Local secrets
+.env
+.env.local
+*.env
+
+# Generated media and runtime state
+recordings/*
+!recordings/.gitkeep
+clips/*
+!clips/.gitkeep
+transcripts/*
+!transcripts/.gitkeep
+agent_outputs/*
+!agent_outputs/.gitkeep
+cache/*
+!cache/.gitkeep
+logs/*
+!logs/.gitkeep
+data/post_packages/*
+!data/post_packages/.gitkeep
+
+# Keep the small seed data files
+!data/streamers.json
+!data/campaigns.json
+!data/earnings.json
+!data/clips.json
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Reference repos (cloned locally for study; not part of this project)
+reference/
